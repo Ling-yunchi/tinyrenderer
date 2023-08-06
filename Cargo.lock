@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "glam"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42218cb640844e3872cc3c153dc975229e080a6c4733b34709ef445610550226"
+
+[[package]]
 name = "obj"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -18,6 +24,7 @@ checksum = "b54a36fc95199cca1618b34b6adaf51247b8f137cb967c7c42906c19f5120d9b"
 name = "tinyrenderer"
 version = "0.1.0"
 dependencies = [
+ "glam",
  "obj",
  "tgaimage",
 ]

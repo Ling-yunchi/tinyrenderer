@@ -1,4 +1,4 @@
 mod draw;
-mod vec;
+mod utils;
 
 fn main() {}
