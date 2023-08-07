@@ -1,5 +1,5 @@
 use crate::utils::f2i_2;
-use glam::{IVec2, Vec2, Vec3, Vec3Swizzles};
+use glam::{IVec2, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
 use std::cmp::{max, min};
 use std::mem::swap;
 use tgaimage::{TGAColor, TGAImage};
@@ -167,10 +167,18 @@ pub fn triangle_texture(
     }
 }
 
+pub fn viewport(x: i32, y: i32, w: i32, h: i32, depth: i32) -> Mat4 {
+    Mat4::from_cols_array(&[
+        w as f32 / 2.0, 0.0, 0.0, 0.0,
+        0.0, h as f32 / 2.0, 0.0, 0.0,
+        0.0, 0.0, depth as f32 / 2.0, 0.0,
+        x as f32 + w as f32 / 2.0, y as f32 + h as f32 / 2.0, depth as f32 / 2.0, 1.0])
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::draw::{line, triangle, triangle_texture};
-    use glam::{IVec2, Vec2, Vec3};
+    use crate::draw::{line, triangle, triangle_texture, viewport};
+    use glam::{IVec2, Mat4, Vec2, Vec3, Vec4Swizzles};
     use obj::Obj;
     use tgaimage::{TGAColor, TGAImage};
 
@@ -223,9 +231,10 @@ mod tests {
                 .into()
         };
 
+        let mut z_buffer = vec![f32::MIN; width * height];
+
         for object in obj.data.objects {
             for group in object.groups {
-                let mut z_buffer = vec![f32::MIN; width * height];
                 for poly in group.polys {
                     let vec3 = &poly.0;
                     let v0 = Vec3::from(vertex[vec3[0].0 as usize]);
@@ -271,9 +280,9 @@ mod tests {
                 .into()
         };
 
+        let mut z_buffer = vec![f32::MIN; width * height];
         for object in obj.data.objects {
             for group in object.groups {
-                let mut z_buffer = vec![f32::MIN; width * height];
                 for poly in group.polys {
                     let vec3 = &poly.0;
                     let v0 = Vec3::from(vertex[vec3[0].0 as usize]);
@@ -299,5 +308,73 @@ mod tests {
         }
         image.flip_vertically();
         image.write_tga_file("african_head_texture.tga", true);
+    }
+
+    #[test]
+    fn test_projection() {
+        let obj = Obj::load("obj/african_head.obj").unwrap();
+        let width = 1000;
+        let height = 1000;
+        let mut image = TGAImage::new(width, height, 3);
+        let vertex = obj.data.position;
+        let coord = obj.data.texture;
+        let texture = TGAImage::from_tga_file("obj/african_head_diffuse.tga");
+        let m2v = |m: Mat4| -> Vec3 {
+            m.x_axis.xyz() / m.x_axis.w
+        };
+        let v2m = |v: Vec3| -> Mat4 {
+            Mat4::from_cols_array(
+                &[v.x, v.y, v.z, 1.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0])
+        };
+
+        let depth = 255;
+        let light_dir = Vec3::new(0.0, 0.0, -1.0);
+        let camera = Vec3::new(0.0, 0.0, 3.0);
+        let mut projection = Mat4::IDENTITY;
+        let view = viewport(
+            (width / 8) as i32,
+            (height / 8) as i32,
+            (width * 3 / 4) as i32,
+            (height * 3 / 4) as i32,
+            depth,
+        );
+        projection.z_axis.w = -1.0 / camera.z;
+
+        let mut z_buffer = vec![f32::MIN; width * height];
+        for object in obj.data.objects {
+            for group in object.groups {
+                for poly in group.polys {
+                    let vec3 = &poly.0;
+                    let v0 = Vec3::from(vertex[vec3[0].0 as usize]);
+                    let v1 = Vec3::from(vertex[vec3[1].0 as usize]);
+                    let v2 = Vec3::from(vertex[vec3[2].0 as usize]);
+                    let scree_coord = [
+                        m2v(view * projection * v2m(v0)),
+                        m2v(view * projection * v2m(v1)),
+                        m2v(view * projection * v2m(v2)),
+                    ];
+                    let normal = (v2 - v0).cross(v1 - v0).normalize();
+                    let intensity = normal.dot(light_dir);
+                    if intensity > 0.0 {
+                        let uv0 = Vec2::from(coord[vec3[0].1.unwrap() as usize]);
+                        let uv1 = Vec2::from(coord[vec3[1].1.unwrap() as usize]);
+                        let uv2 = Vec2::from(coord[vec3[2].1.unwrap() as usize]);
+                        triangle_texture(
+                            scree_coord,
+                            [uv0, uv1, uv2],
+                            z_buffer.as_mut_slice(),
+                            &mut image,
+                            &texture,
+                            intensity,
+                        );
+                    }
+                }
+            }
+        }
+        image.flip_vertically();
+        image.write_tga_file("african_head_projection.tga", true);
     }
 }
